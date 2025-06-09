@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 import ast
 import re
 from typing import List
-import streamlit as st  # ✅ Streamlit 추가
+import streamlit as st
 
-# Qwen 모델을 다루는 클래스 (이제는 외부에서 주입받음)
+# Qwen 모델을 다루는 클래스
 class QwenModel:
     def __init__(self, llm):
         self.llm = llm
@@ -39,7 +39,7 @@ class Agent3:
         self,
         topic_query: str,
         selected_indicator_indexes: List[int] = [1, 2, 3, 4, 5],
-        weight_mode: str = "auto",  # "auto" or "manual"
+        weight_mode: str = "auto",
         manual_weights: List[float] = None
     ):
         if not self.filter_by_keywords(topic_query):
@@ -71,18 +71,13 @@ class Agent3:
         ].head(10)
 
         result_text = top_10.to_markdown(index=False)
-        st.markdown("### 📊 중요 특허 평가 결과")
-        st.markdown(result_text)
 
         prompt1 = f"""다음은 자연어 쿼리 결과로 생성된 특허 평가 결과입니다:\n\n{top_10.to_string(index=False)}\n\n
 이 결과를 바탕으로 생성된 결과로 알 수 있는 시사점을 한국어로 제시해줘. 이때, 사용자가 꼭 알아야 하는 유의미하고 핵심적인 시사점을 제시해줘야 하며, 특허의 요약을 보고 특허 점수가 높게 나온 특허에 대한 설명도 간단히 제공해줘. 이때 너무 길게 제공하지 말아줘."""
 
-        # ✅ spinner 안에서만 실행
-        with st.spinner("🧠 시사점 요약 생성 중..."):
+        try:
             interpretation = self.qwen.ask(prompt1)
+        except Exception as e:
+            interpretation = f"⚠️ LLM 해석 실패: {e}"
 
-        if interpretation.strip():
-            st.markdown("### 🧠 시사점 요약")
-            st.markdown(interpretation)
-
-        return None
+        return f"{result_text}\n\n🧠 시사점 요약:\n{interpretation}"

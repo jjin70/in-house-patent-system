@@ -1,11 +1,10 @@
-from typing import Union, List, Tuple, Dict
+from typing import Union, List, Dict
 from pydantic import BaseModel
 import json
 import pandas as pd
 import re
 from langchain.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_community.chat_models import ChatOllama
-from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import OllamaEmbeddings
@@ -14,19 +13,35 @@ from Final_Trend import KeywordAnalyzer
 from Final_evaluator import Agent3
 from writer_tool4_new import generate_technical_draft
 
-
 llm = ChatOllama(model="qwen2.5:7b", temperature=0.0)
+
+embedding_model = OllamaEmbeddings(model="bge-m3")
+vectorstore = Chroma(
+    persist_directory="/Users/heejinyang/python/streamlit/chroma_db_streamlit",
+    embedding_function=embedding_model,
+)
+
+class PlanExecute(BaseModel):
+    input: str
+    tools: List[str] = []
+    sub_queries: Dict[str, Union[str, List[str]]] = {}
+    results: Dict[str, str] = {}
+    response: Union[str, None] = None
+    log: List[str] = []
+    llm: ChatOllama = llm
+    selected_indicator_indexes: List[int] = []  # ✅ evaluator UI 선택 반영
+    weight_mode: str = "auto"
+    manual_weights: Union[List[float], None] = None
 
 def safe_result_summary(result):
     if isinstance(result, pd.DataFrame):
         return result.to_markdown(index=False)
     elif isinstance(result, list):
-        return "\n".join(str(x) for x in result[:5]) 
+        return "\n".join(str(x) for x in result[:5])
     elif isinstance(result, dict):
         return json.dumps(result, indent=2, ensure_ascii=False)
     else:
         return str(result)
-
 
 def extract_json_from_text(text: str) -> str:
     json_pattern = r'\{[\s\S]*\}'
@@ -35,25 +50,7 @@ def extract_json_from_text(text: str) -> str:
         return match.group(0)
     raise ValueError("JSON 형식이 아닙니다.")
 
-# ✅ Embedding + Vectorstore 초기화
-embedding_model = OllamaEmbeddings(model="bge-m3")
-vectorstore = Chroma(
-    persist_directory="/Users/heejinyang/python/streamlit/chroma_db_streamlit",
-    embedding_function=embedding_model,
-)
-
-# ✅ 상태 정의
-class PlanExecute(BaseModel):
-    input: str
-    tools: List[str] = []
-    sub_queries: Dict[str, Union[str, List[str]]] = {}
-    sub_queries_generated: bool = False  # ✅ 여기에 추가!
-    results: Dict[str, str] = {}
-    response: Union[str, None] = None
-    log: List[str] = []
-    llm: ChatOllama = llm # 전역 공유 llm
-
-# ✅ Tool Selector (도구 설명 포함)
+# ---- Nodes ----
 tool_selector_prompt = ChatPromptTemplate.from_template("""
 다음 사용자의 질문을 해결하기 위해 어떤 도구를 사용하는 것이 가장 적절한지 판단하세요.
 
@@ -90,28 +87,21 @@ tool_selector_prompt = ChatPromptTemplate.from_template("""
 tool_selector_chain = tool_selector_prompt | llm
 
 def tool_selector(state: PlanExecute):
-    # 1) LLM 응답을 그대로 받고
     response = tool_selector_chain.invoke({"query": state.input})
     raw = response.content.strip()
-
     try:
-        # 2) extract_json_from_text 로 JSON 덩어리만 추출
         json_text = extract_json_from_text(raw)
         parsed = json.loads(json_text)
     except Exception as e:
-        # 3) 실패 시 디버깅을 위해 원본 응답 남기기
-        raise ValueError(
-            f"[tool_selector] JSON 파싱 실패: {e}\n"
-            f"원본 응답:\n{raw}"
-        )
+        raise ValueError(f"[tool_selector] JSON 파싱 실패: {e}\n원본 응답:\n{raw}")
 
-    # 4) 잘 파싱된 tools 리스트로 상태 갱신
+    print("\n🛠️ 도구 선택 원본 응답:\n", raw)
+
     return {
         "tools": parsed["tools"],
         "log": state.log + [f"🔧 선택된 도구: {parsed['tools']}"]
     }
 
-# ✅ Sub-query Planner
 sub_query_prompt = ChatPromptTemplate.from_template("""
 다음은 사용자 질문과 선택된 도구 목록입니다.
 각 도구에 대해 하나의 질의를 생성하세요. 
@@ -155,86 +145,53 @@ sub_query_prompt = ChatPromptTemplate.from_template("""
 
 sub_query_chain = sub_query_prompt | llm
 
+
 def tool_query_planner(state: PlanExecute):
-    # ✅ 이미 분리되었으면 다시 실행하지 않음
-    if state.sub_queries_generated:
-        return {
-            "sub_queries": state.sub_queries,
-            "log": state.log + ["✅ Sub-query 이미 생성됨, 재생성하지 않음"]
-        }
-
-    # 여기!!!!!!!!
-    result = sub_query_chain.invoke({
-        "query": state.input,
-        "tools": state.tools  # 리스트 그대로 넘기기
-    })
-
+    result = sub_query_chain.invoke({"query": state.input, "tools": ", ".join(state.tools)})
     try:
         json_text = extract_json_from_text(result.content)
         parsed = json.loads(json_text)
     except Exception as e:
         raise ValueError(f"❌ Sub-query 생성 결과 파싱 실패:\n{result.content}\n\n에러: {e}")
 
-    # 여기!!!!!!!!!
-    print("📌 tool_query_planner 받은 tool 목록:", state.tools)
-    print("📌 sub_query_chain 응답 원문:", result.content)
+    print("\n🧩 Sub-query 원본 응답:\n", result.content)
 
     return {
         "sub_queries": parsed["sub_queries"],
-        "sub_queries_generated": True,  # ✅ 상태값 갱신
         "log": state.log + [f"🧩 Sub-query 분리 결과: {parsed['sub_queries']}"]
     }
 
-# ✅ Tool 실행기
 def execute_tools(state: PlanExecute):
     results = {}
     for tool_name, query in state.sub_queries.items():
         if tool_name == "patent_searcher":
-            sub_queries = [q.strip() for q in query.split(",") if q.strip()]  # 쉼표 기준 분리
+            sub_queries = [q.strip() for q in query.split(",") if q.strip()]
             combined_summary = ""
             for i, sub_q in enumerate(sub_queries, 1):
-                # print(f"\n🔍 [Tool1-{i}] 서브 쿼리 실행 중: {sub_q}")
                 summary, _ = run_filtered_rag(vectorstore, embedding_model, sub_q, llm=state.llm, use_bm25=True)
                 combined_summary += f"[서브 쿼리 {i}] {sub_q}\n{summary}\n\n"
             results[tool_name] = combined_summary.strip()
-
-
         elif tool_name == "patent_trend_analyzer":
             trend_agent = KeywordAnalyzer(csv_path="/Users/heejinyang/python/streamlit/Codes/0527_cleaning_processing_ver1.csv", llm=state.llm)
-            intepretation = trend_agent.run(query) 
-            results[tool_name] = safe_result_summary(intepretation)
+            interpretation = trend_agent.run(query)
+            results[tool_name] = safe_result_summary(interpretation)
         elif tool_name == "patent_evaluator":
-            evaluator = Agent3(
-                csv_path="/Users/heejinyang/python/streamlit/Codes/0527_cleaning_processing_ver1.csv",
-                llm=state.llm
-            )
+            evaluator = Agent3(csv_path="/Users/heejinyang/python/streamlit/Codes/0527_cleaning_processing_ver1.csv", llm=state.llm)
             interpretation = evaluator.handle(topic_query=query)
-            results[tool_name] = interpretation  # 바로 시사점 결과 저장
+            results[tool_name] = interpretation
         elif tool_name == "tech_writer":
-            print("📝 기술 설명서를 위한 초안 작성을 시작합니다.")
             result = generate_technical_draft.invoke({"user_input": query})
-    
-            # LangChain LLM 응답 객체일 경우 .content 추출
             content = result.content if hasattr(result, "content") else str(result)
-            results[tool_name] = content        
+            results[tool_name] = content
         else:
             results[tool_name] = f"[{tool_name}]에 대한 응답 (Mock 처리됨)"
-            
     return {
         "results": results,
         "log": state.log + [f"⚙️ 실행 완료: {list(results.keys())}"]
     }
 
-# ✅ 결과 요약기
 def post_summary(state: PlanExecute):
     merged = "\n\n".join(f"[{tool} 결과]\n{res}" for tool, res in state.results.items())
-    
-    if not merged.strip():
-        return {
-            "response": "❗ 도구 실행 결과가 비어 있습니다. 입력을 확인해 주세요.",
-            "log": state.log + ["⚠️ post_summary: 결과 없음"]
-        }
-        
     summary_prompt = PromptTemplate.from_template("""
 아래는 각 도구를 통해 수집된 결과입니다:
 
@@ -246,13 +203,16 @@ def post_summary(state: PlanExecute):
 """)
     summary_chain = summary_prompt | state.llm
     result = summary_chain.invoke({"merged": merged})
+
     return {
         "response": result.content.strip(),
         "log": state.log + ["🧠 최종 종합 요약 완료"]
     }
 
-# ✅ LangGraph 구성
+from langgraph.graph import StateGraph, START, END
+
 graph = StateGraph(PlanExecute)
+
 graph.add_node("tool_selector", tool_selector)
 graph.add_node("tool_query_planner", tool_query_planner)
 graph.add_node("execute", execute_tools)
@@ -264,4 +224,26 @@ graph.add_edge("tool_query_planner", "execute")
 graph.add_edge("execute", "post_summary")
 graph.add_edge("post_summary", END)
 
+graph.set_entry_point("tool_selector")     # ✅ START는 자동 처리됨
+graph.set_finish_point("post_summary")     # ✅ END로 가는 마지막 노드를 지정
+
 app = graph.compile(checkpointer=MemorySaver())
+
+from uuid import uuid4
+
+def run_agent(user_input: str) -> str:
+    state = PlanExecute(input=user_input)
+    result = app.invoke(
+        state,
+        config={"configurable": {"thread_id": str(uuid4())}}  # ✅ 명시적으로 thread 분리
+    )
+    result_dict = dict(result)
+
+    print("\n🧾 실행 로그:")
+    for entry in result_dict.get("log", []):
+        print(entry)
+
+    if "response" not in result_dict:
+        raise ValueError("❌ 'response' 키가 최종 결과에 존재하지 않습니다.")
+
+    return result_dict["response"]
