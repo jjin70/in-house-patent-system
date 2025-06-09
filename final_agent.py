@@ -163,14 +163,21 @@ def tool_query_planner(state: PlanExecute):
             "log": state.log + ["✅ Sub-query 이미 생성됨, 재생성하지 않음"]
         }
 
-    tools_str = ", ".join(state.tools)
-    result = sub_query_chain.invoke({"query": state.input, "tools": tools_str})
+    # 여기!!!!!!!!
+    result = sub_query_chain.invoke({
+        "query": state.input,
+        "tools": state.tools  # 리스트 그대로 넘기기
+    })
 
     try:
         json_text = extract_json_from_text(result.content)
         parsed = json.loads(json_text)
     except Exception as e:
         raise ValueError(f"❌ Sub-query 생성 결과 파싱 실패:\n{result.content}\n\n에러: {e}")
+
+    # 여기!!!!!!!!!
+    print("📌 tool_query_planner 받은 tool 목록:", state.tools)
+    print("📌 sub_query_chain 응답 원문:", result.content)
 
     return {
         "sub_queries": parsed["sub_queries"],

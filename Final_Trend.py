@@ -101,9 +101,9 @@ class KeywordAnalyzer:
         keyword, year_range = self.extract_keyword_and_year(query)
 
         if self.df["출원인"].astype(str).str.contains(keyword, case=False, na=False).any():
-            self.corporate(keyword, year_range)
+            return self.corporate(keyword, year_range)
         elif self.df["요약(번역)"].astype(str).str.contains(keyword, case=False, na=False).any():
-            self.tech(keyword, year_range)
+            return self.tech(keyword, year_range)
         else:
-            st.warning("❌ 키워드 매칭 실패: '출원인'이나 '요약(번역)'에 해당 키워드가 없습니다.")  
+            return f"❌ 키워드 매칭 실패: '{keyword}' 키워드가 '출원인'이나 '요약(번역)'에서 찾을 수 없습니다."
             
