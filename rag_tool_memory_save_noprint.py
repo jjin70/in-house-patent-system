@@ -3,15 +3,12 @@ from collections import defaultdict
 from typing import List, Tuple, Dict
 import json
 import re
-import os
-from tabulate import tabulate
 from difflib import SequenceMatcher
 from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_community.chat_models import ChatOllama
 from langchain_community.retrievers import BM25Retriever
 
 def normalize(scores):
@@ -19,6 +16,7 @@ def normalize(scores):
     if min_s == max_s:
         return [0.5] * len(scores)
     return [(s - min_s) / (max_s - min_s) for s in scores]
+
 
 def ensemble_with_normalized_scores(docs1, docs2, weight1=0.6, weight2=0.4, top_k=10):
     def safe_uid(doc):
@@ -57,7 +55,8 @@ def ensemble_with_normalized_scores(docs1, docs2, weight1=0.6, weight2=0.4, top_
 # 사후 필터링 함수
 def apply_post_filter(docs: List[Document], parsed_filter: Dict) -> List[Document]:
     def is_similar(a: str, b: str, threshold: float = 0.4) -> bool:
-        return SequenceMatcher(None, a, b).ratio() >= threshold # Threshold는 현대자동차를 현대차, 현대기아차, 현대 와같은 여러 기업명에 잘 적용되도록 조절하는 함수임
+        return SequenceMatcher(None, a,
+                               b).ratio() >= threshold  # Threshold는 현대자동차를 현대차, 현대기아차, 현대 와같은 여러 기업명에 잘 적용되도록 조절하는 함수임
 
     filtered_docs = []
     for doc in docs:
@@ -91,11 +90,13 @@ def apply_post_filter(docs: List[Document], parsed_filter: Dict) -> List[Documen
 
     return filtered_docs
 
+
 def extract_json_from_text(text: str) -> str:
     match = re.search(r'\{[\s\S]*\}', text)
     if match:
         return match.group(0)
     raise ValueError("JSON 포맷을 찾을 수 없습니다.")
+
 
 def group_docs_by_application_number(docs: List[Document]) -> Dict[str, List[Document]]:
     grouped = defaultdict(list)
@@ -106,12 +107,11 @@ def group_docs_by_application_number(docs: List[Document]) -> Dict[str, List[Doc
 
 
 def expand_documents_by_application_number(
-    docs: List[Document], 
-    vectorstore: Chroma
+        docs: List[Document],
+        vectorstore: Chroma
 ) -> Tuple[List[Document], pd.DataFrame]:
-
     summarization_sections = {"기술배경", "발명의효과"}
-    structured_sections = { "요약", "독립청구항","기술과제"}
+    structured_sections = {"요약", "독립청구항", "기술과제"}
 
     app_nums = list(set(doc.metadata.get("출원번호") for doc in docs if "출원번호" in doc.metadata))
     if not app_nums:
@@ -151,6 +151,7 @@ def expand_documents_by_application_number(
     # ✅ 구조화 정보 → DataFrame 변환
     structured_info_df = pd.DataFrame(structured_records)
     return summary_docs, structured_info_df
+
 
 def retrieve_structured_sections_by_appnums(app_nums: List[str], vectorstore: Chroma) -> pd.DataFrame:
     """
@@ -246,6 +247,7 @@ Context:
 
     return llm.invoke(messages).content.strip()
 
+
 def selector_filter_context(context_groups: Dict[str, List[Document]], query: str, llm, log_list=[]):
     selected_docs = []
     selected_app_nums = []
@@ -276,7 +278,7 @@ def selector_filter_context(context_groups: Dict[str, List[Document]], query: st
         if decision == "Y":
             selected_docs.extend(docs)
             selected_app_nums.append(app_num)
-            
+
     # ✅ 선택된 출원번호 출력
     # if selected_app_nums:
     #     print(f"\n✅ 선택된 출원번호 ({len(selected_app_nums)}개): {', '.join(selected_app_nums)}")
@@ -350,7 +352,7 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
 **특정 기업** 이라는 것으로 출원인 항목을 표기하지 마세요. 없는 경우는 JSON을 생성하지 않으면 됩니다.
 현재 연도는 2025년입니다. 사용자의 '작년', '재작년', 'N년전' 등에 대한 자연어 질의에 초점을 맞추어 유동적으로 범위를 생성하세요.                                
 """
-)
+                                                    )
     filter_chain = LLMChain(llm=llm, prompt=filtering_prompt)
     try:
         parsed_filter = json.loads(extract_json_from_text(filter_chain.run(query=user_query)))
@@ -370,13 +372,15 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
 
     # 3. Ensemble Retriever with weight
     all_data = vectorstore._collection.get(include=["documents", "metadatas"])
-    all_docs = [Document(page_content=doc, metadata=meta) for doc, meta in zip(all_data["documents"], all_data["metadatas"])]
+    all_docs = [Document(page_content=doc, metadata=meta) for doc, meta in
+                zip(all_data["documents"], all_data["metadatas"])]
 
-    dense_retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 10,"fetch_k":20})
+    dense_retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 10, "fetch_k": 20})
 
     if use_bm25:
         all_data = vectorstore._collection.get(include=["documents", "metadatas"])
-        all_docs = [Document(page_content=doc, metadata=meta) for doc, meta in zip(all_data["documents"], all_data["metadatas"])]
+        all_docs = [Document(page_content=doc, metadata=meta) for doc, meta in
+                    zip(all_data["documents"], all_data["metadatas"])]
         sparse_retriever = BM25Retriever.from_documents(all_docs)
         sparse_retriever.k = 10
         sparse_docs = sparse_retriever.get_relevant_documents(user_query)
@@ -418,7 +422,7 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
     top_docs = filtered_docs[:3]
 
     # 5. 확장 (요약 대상, 구조화 정보 분리)
-    summary_docs,structured_df = expand_documents_by_application_number(top_docs, vectorstore)
+    summary_docs, structured_df = expand_documents_by_application_number(top_docs, vectorstore)
     summary_grouped = group_docs_by_application_number(summary_docs)
 
     # 6. Selector Loop (요약 대상, 구조화 정보 분리)
@@ -432,14 +436,14 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
         retry_grouped = group_docs_by_application_number(retry_summary_docs)
         selected_docs = selector_filter_context(retry_grouped, user_query, llm, selector_log)
 
-#  다시 실패 시 3차 시도 
+    #  다시 실패 시 3차 시도
     if not selected_docs:
         # print("🌀 Selector 재시도 실패 → Top 7~10 재시도")
         retry_docs = filtered_docs[6:10] if len(filtered_docs) >= 10 else retrieved_docs[6:10]
         retry_summary_docs, structured_df = expand_documents_by_application_number(retry_docs, vectorstore)
         retry_grouped = group_docs_by_application_number(retry_summary_docs)
         selected_docs = selector_filter_context(retry_grouped, user_query, llm, selector_log)
-        
+
     if not selected_docs:
         # print("📭 최종적으로 적합한 특허 없음")
         # print("질문과 관련된 특허를 찾을 수 없습니다.")
@@ -449,20 +453,16 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
 
     # print(f"📚 Selector 통과 후 문서 개수: {len(selected_docs)}개")
 
-
     # 선택된 문서 기반 Summary 진행
     selected_app_nums = list(set(doc.metadata.get("출원번호", "") for doc in selected_docs))
-
 
     # 6. 고급 요약 생성
     advanced_summary = generate_advanced_summary(selected_docs, user_query, llm)
     summary_header = "\n📘 특허 검색 및 요약 정보:\n"
     full_summary = summary_header + advanced_summary
 
-
     # Selector 이후 출원번호 추출
     selected_appnums = list({doc.metadata.get("출원번호") for doc in selected_docs})
-
 
     # Selector 통과 못한 출원번호 추출
     excluded_app_nums = list({
@@ -491,13 +491,12 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
 
     retrieved_excluded_summaries = retrieve_summary_sections_by_appnums(excluded_app_nums, vectorstore)
 
-
     # Selector 통과 못한 문서 요약 제공용 DF 생성
 
     excluded_summary_records = []
     for doc in retrieved_excluded_summaries:
         raw_summary = doc.page_content.strip()
-        
+
         # 요약, 요약\n, 요약: 등으로 시작하는 부분 제거
         cleaned_summary = re.sub(r"^요약[\s:\n]*", "", raw_summary)
 
@@ -507,13 +506,13 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
             "발명의 명칭": doc.metadata.get("발명의 명칭", "N/A"),
             "요약": cleaned_summary
         })
-    
+
     excluded_summary_df = pd.DataFrame(excluded_summary_records)
 
     if not excluded_summary_df.empty:
-        excluded_summary_text = "\n\n📄 관련 특허 요약 정보:\n\n"
+        excluded_summary_text = "\n\n📄 Selector에서 제외된 특허 요약 정보:\n\n"
         excluded_summary_text += excluded_summary_df[["출원번호", "발명의 명칭", "요약"]].to_markdown(index=False)
     else:
         excluded_summary_text = ""
-        
+
     return full_summary + "\n\n" + excluded_summary_text, excluded_summary_df

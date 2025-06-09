@@ -57,11 +57,9 @@ class KeywordAnalyzer:
         return self._plot_and_interpret(matches, keyword, "기술", year_range)
 
     def _plot_and_interpret(self, matches, keyword, keyword_type, year_range):
-        output_text = ""
-
         if matches.empty:
-            output_text += f"❌ '{keyword}' 관련 특허가 없습니다.\n"
-            return output_text
+            st.warning(f"❌ '{keyword}' 관련 특허가 없습니다.")
+            return
 
         summary = matches.groupby("출원연도").size().reset_index(name="출원 건수")
         if year_range:
@@ -69,10 +67,10 @@ class KeywordAnalyzer:
             summary = summary[(summary["출원연도"] >= start) & (summary["출원연도"] <= end)]
 
         if summary.empty:
-            output_text += f"❌ 주어진 연도 범위 내에 '{keyword}' 관련 특허가 없습니다.\n"
-            return output_text
+            st.warning(f"❌ 주어진 연도 범위 내에 '{keyword}' 관련 특허가 없습니다.")
+            return
 
-        # ✅ Streamlit용 그래프
+        # ✅ Streamlit 그래프 출력
         fig, ax = plt.subplots(figsize=(4, 2))
         ax.bar(summary["출원연도"], summary["출원 건수"], color="navy")
         ax.set_xlabel("출원연도", fontsize=5)
@@ -101,9 +99,8 @@ class KeywordAnalyzer:
         keyword, year_range = self.extract_keyword_and_year(query)
 
         if self.df["출원인"].astype(str).str.contains(keyword, case=False, na=False).any():
-            return self.corporate(keyword, year_range)
+            self.corporate(keyword, year_range)
         elif self.df["요약(번역)"].astype(str).str.contains(keyword, case=False, na=False).any():
-            return self.tech(keyword, year_range)
+            self.tech(keyword, year_range)
         else:
-            return f"❌ 키워드 매칭 실패: '{keyword}' 키워드가 '출원인'이나 '요약(번역)'에서 찾을 수 없습니다."
-            
+            st.warning("❌ 키워드 매칭 실패: '출원인'이나 '요약(번역)'에 해당 키워드가 없습니다.")
