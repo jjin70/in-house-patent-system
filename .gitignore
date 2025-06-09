@@ -192,3 +192,9 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+0527_cleaning_processing_ver1.csv
+
+venv
+
+.DS_Store
