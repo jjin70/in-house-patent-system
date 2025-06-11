@@ -120,7 +120,7 @@ def expand_documents_by_application_number(
     retriever = vectorstore.as_retriever(
         search_kwargs={"filter": {"출원번호": {"$in": app_nums}}, "k": 20}
     )
-    expanded = retriever.get_relevant_documents("")
+    expanded = retriever.invoke("")
 
     # ✅ 중복 제거
     seen = set()
@@ -164,7 +164,7 @@ def retrieve_structured_sections_by_appnums(app_nums: List[str], vectorstore: Ch
         retriever = vectorstore.as_retriever(
             search_kwargs={"filter": {"출원번호": app_num}, "k": 30}
         )
-        docs = retriever.get_relevant_documents("")
+        docs = retriever.invoke("")
 
         for doc in docs:
             section = doc.metadata.get("section", "")
@@ -300,7 +300,7 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
 - 출원일자: 특허 출원 시점을 의미하며, 연도단위가 될 수 있음                                                                        
 
 위 항목 중 어떤 항목을 어떤 조건으로 필터링해야 가장 적절한 검색이 될지 판단하되, 필터링 조건이 사용자의 질의에 없는데 굳이 할 필요는 없습니다.
-                                                    
+
 사용자 질의에서 사용자가 요구하는 정보는 
 1)출원인 
 2)출원일자 
@@ -343,11 +343,11 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
     "출원인":[엘지이노텍]                                          
 }}
 로 JSON 형식을 만들면 됩니다.
-                                                                                               
+
 7. 마지막 예로, "전기차 배터리 관련 특허를 검색해줘" 라는 질의는 **출원인**과 **출원일자**에 대한 사용자의 정보 요구가 모두 존재하지 않으므로,
 빈 형태의 JSON인
 {{}}을 반환하면 됩니다.
-                              
+
 참고로, 사용되는 형식에서 출원일자의 $gte 는 특정 시점 이후, $lte는 특정 시점 이전을 나타내는 표기입니다.
 **특정 기업** 이라는 것으로 출원인 항목을 표기하지 마세요. 없는 경우는 JSON을 생성하지 않으면 됩니다.
 현재 연도는 2025년입니다. 사용자의 '작년', '재작년', 'N년전' 등에 대한 자연어 질의에 초점을 맞추어 유동적으로 범위를 생성하세요.                                
@@ -355,7 +355,7 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
                                                     )
     filter_chain = LLMChain(llm=llm, prompt=filtering_prompt)
     try:
-        parsed_filter = json.loads(extract_json_from_text(filter_chain.run(query=user_query)))
+        parsed_filter = json.loads(extract_json_from_text(filter_chain.invoke(query=user_query)))
         filter_exists = True
     except:
         parsed_filter = {}
@@ -383,17 +383,17 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
                     zip(all_data["documents"], all_data["metadatas"])]
         sparse_retriever = BM25Retriever.from_documents(all_docs)
         sparse_retriever.k = 10
-        sparse_docs = sparse_retriever.get_relevant_documents(user_query)
+        sparse_docs = sparse_retriever.invoke(user_query)
     else:
         sparse_docs = []  # 빈 리스트 처리
 
-    dense_docs = dense_retriever.get_relevant_documents(user_query)
+    dense_docs = dense_retriever.invoke(user_query)
     retrieved_docs = ensemble_with_normalized_scores(dense_docs, sparse_docs, top_k=10)
     sparse_retriever = BM25Retriever.from_documents(all_docs)
     sparse_retriever.k = 10
 
-    dense_docs = dense_retriever.get_relevant_documents(user_query)
-    sparse_docs = sparse_retriever.get_relevant_documents(user_query)
+    dense_docs = dense_retriever.invoke(user_query)
+    sparse_docs = sparse_retriever.invoke(user_query)
     retrieved_docs = ensemble_with_normalized_scores(dense_docs, sparse_docs, top_k=10)
 
     # print(f"\n🔎 총 retrieval 문서 수: {len(retrieved_docs)}개")
@@ -485,7 +485,7 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
                     "k": k
                 }
             )
-            docs = retriever.get_relevant_documents("")
+            docs = retriever.invoke("")
             retrieved.extend([doc for doc in docs if doc.metadata.get("section") == "요약"])
         return retrieved
 
