@@ -163,24 +163,51 @@ if st.session_state.user_input and run_analysis:
             )
 
             # ✅ 결과 출력
-            analysis_text = result.get("results", {}).get("patent_searcher", "")
-            summary_text = result.get("response", "")
+            tool_results = result.get("results", {})
+            # tool_name = st.session_state.tools[0] if st.session_state.tools else ""
+            #
+            # # 📘 patent_searcher 전용 출력
+            # if tool_name == "patent_searcher":
+            #     analysis_text = tool_results.get("patent_searcher", "")
+            #     summary_text = result.get("response", "")
+            #
+            #     st.markdown("<h3>📘 특허 검색 및 요약 정보</h3>", unsafe_allow_html=True)
+            #     if "📘" in analysis_text:
+            #         analysis_text = analysis_text.replace("📘 특허 검색 및 요약 정보:", "")
+            #     st.markdown(f"<div style='font-size:16px;'>{analysis_text}</div>", unsafe_allow_html=True)
+            #
+            #     if "📄" in analysis_text:
+            #         st.markdown("<h3 style='margin-top:32px;'>📄 Selector에서 제외된 특허 요약 정보</h3>", unsafe_allow_html=True)
+            #
+            #     st.markdown("---", unsafe_allow_html=True)
+            #     st.markdown("<h3>🧠 종합 요약</h3>", unsafe_allow_html=True)
+            #     st.markdown(f"<div style='font-size:16px;'>{summary_text}</div>", unsafe_allow_html=True)
 
-            if analysis_text.startswith("[서브 쿼리 1]"):
-                analysis_text = "\n".join(analysis_text.split("\n")[1:]).strip()
+            for tool_name in st.session_state.tools:
+                result_value = tool_results.get(tool_name, "")
 
-            st.markdown("<h3>📘 특허 검색 및 요약 정보</h3>", unsafe_allow_html=True)
-            if "📘" in analysis_text:
-                analysis_text = analysis_text.replace("📘 특허 검색 및 요약 정보:", "")
-            st.markdown(f"<div style='font-size:16px;'>{analysis_text}</div>", unsafe_allow_html=True)
+                if tool_name == "patent_searcher":
+                    summary_text = result.get("response", "")
 
-            if "📄" in analysis_text:
-                st.markdown("<h3 style='margin-top:32px;'>📄 Selector에서 제외된 특허 요약 정보</h3>", unsafe_allow_html=True)
+                    st.markdown("<h3>📘 특허 검색 및 요약 정보</h3>", unsafe_allow_html=True)
+                    if isinstance(result_value, str) and "📘" in result_value:
+                        result_value = result_value.replace("📘 특허 검색 및 요약 정보:", "")
+                    st.markdown(f"<div style='font-size:16px;'>{result_value}</div>", unsafe_allow_html=True)
 
-            st.markdown("---", unsafe_allow_html=True)
-            st.markdown("<h3>🧠 종합 요약</h3>", unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size:16px;'>{summary_text}</div>", unsafe_allow_html=True)
+                    if "📄" in result_value:
+                        st.markdown("<h3 style='margin-top:32px;'>📄 Selector에서 제외된 특허 요약 정보</h3>",
+                                    unsafe_allow_html=True)
 
+                    st.markdown("---", unsafe_allow_html=True)
+                    st.markdown("<h3>🧠 종합 요약</h3>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-size:16px;'>{summary_text}</div>", unsafe_allow_html=True)
+
+                else:
+                    st.markdown(f"<h3>🔧 {tool_name} 결과</h3>", unsafe_allow_html=True)
+                    if isinstance(result_value, pd.DataFrame):
+                        st.dataframe(result_value)
+                    else:
+                        st.markdown(f"<div style='font-size:16px;'>{result_value}</div>", unsafe_allow_html=True)
         except Exception as e:
             st.error(f"⚠️ 에러 발생: {e}")
 
