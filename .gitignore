@@ -198,3 +198,5 @@ cython_debug/
 venv
 
 .DS_Store
+
+chroma_db_streamlit

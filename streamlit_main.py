@@ -13,7 +13,7 @@ csv_path = "/Users/heejinyang/python/streamlit/Codes/0527_cleaning_processing_ve
 df = pd.read_csv(csv_path)
 
 # Chroma DB 연결
-client = chromadb.PersistentClient(path="/Users/heejinyang/python/streamlit/Codes/chroma_db_streamlit")
+client = chromadb.PersistentClient(path="/Users/heejinyang/python/streamlit/chroma_db_streamlit")
 collection = client.get_or_create_collection(name="my_collection")
 
 # 텍스트 파일
