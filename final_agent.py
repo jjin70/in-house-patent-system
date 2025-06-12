@@ -31,11 +31,11 @@ def extract_json_from_text(text: str) -> str:
     match = re.search(json_pattern, text)
     if match:
         return match.group(0)
-    raise ValueError("JSON \ud615\uc2dd\uc774 \uc544\ub2d9\ub2c8\ub2e4.")
+    raise ValueError("JSON 형식이 아닙니다.")
 
 embedding_model = OllamaEmbeddings(model="bge-m3")
 vectorstore = Chroma(
-    persist_directory="C:/Users/user/OneDrive/문서/종설실습/streamlit/chroma_db_streamlit",
+    persist_directory="/Users/heejinyang/python/streamlit/chroma_db_streamlit",
     embedding_function=embedding_model,
 )
 
@@ -58,24 +58,10 @@ tool_selector_prompt = ChatPromptTemplate.from_template("""
 - tech_writer: 기술 개요를 바탕으로 기술 설명서 초안을 작성합니다.
 
 사용자의 질문:
-"{query}" 
-
-✅ 선택 지침:
-- 하나의 도구만 선택하는 것이 원칙입니다.
-- 단, 질문이 두 개 이상의 도구가 협업해야만 해결되는 경우, 도구를 복수 선택하세요.
-- patent_searcher의 경우 질문이 두 가지 이상의 고도화된 특허 검색이 요구되는 경우, patent_searcher를 두 번 반복 호출해도 됩니다.
-- patent_searcher가 2번 선택된 경우는 **그리고**, **또는** 혹은 마침표나 콤마로 서로 다른 성격의 기술에 대해서 질문하는 경우에 두 번 호출하면돼.
+"{query}"
 
 반드시 아래와 같은 형태의 JSON 형식으로 응답하세요:
 {{"tools": ["patent_searcher"]}}
-또는
-{{"tools": ["patent_searcher", "patent_evaluator"]}}
-또는
-{{"tools": ["patent_searcher", "patent_searcher"]}}
-또는
-{{"tools": ["patent_searcher", "patent_trend_analyzer"]}}
-또는
-{{"tools": ["patent_searcher", "patent_trend_analyzer","patent_evaluator"]}}
 또는
 {{"tools": ["tech_writer"]}}
 """)
@@ -83,7 +69,6 @@ tool_selector_prompt = ChatPromptTemplate.from_template("""
 tool_selector_chain = tool_selector_prompt | llm
 
 def tool_selector(state: PlanExecute):
-    print("\n🛠 [STEP 1] 도구 선택 시작")
     response = tool_selector_chain.invoke({"query": state.input})
     raw = response.content.strip()
     print("🛠 도구 선택 응답 원본:\n", raw)
@@ -96,9 +81,6 @@ def tool_selector(state: PlanExecute):
     return {"tools": parsed["tools"], "log": state.log + [f"🔧 선택된 도구: {parsed['tools']}"]}
 
 sub_query_prompt = ChatPromptTemplate.from_template(r"""
-다음은 사용자 질문과 선택된 도구 목록입니다.
-각 도구에 대해 하나의 질의를 생성하세요. 
-
 사용자의 질문:
 "{query}"
 
@@ -115,13 +97,11 @@ sub_query_prompt = ChatPromptTemplate.from_template(r"""
     "patent_trend_analyzer": "2020년 이후 전기차 배터리 동향"
   }}
 }}
-```
 """)
 
 sub_query_chain = sub_query_prompt | llm
 
 def tool_query_planner(state: PlanExecute):
-    print("\n🧩 [STEP 2] Sub-query 생성 시작")
     result = sub_query_chain.invoke({"query": state.input, "tools": ", ".join(state.tools)})
     print("🧩 Sub-query 응답 원본:\n", result.content)
     try:
@@ -133,54 +113,32 @@ def tool_query_planner(state: PlanExecute):
     return {"sub_queries": parsed["sub_queries"], "log": state.log + [f"🧩 Sub-query 분리 결과: {parsed['sub_queries']}"]}
 
 def execute_tools(state: PlanExecute):
-    print("\n⚙️ [STEP 3] 도구 실행 시작")
     results = {}
     for tool_name, query in state.sub_queries.items():
-        print(f"\n▶ 실행 도구: {tool_name}")
-        print(f"▶ 질의 내용: {query}")
-
         if tool_name == "patent_searcher":
             sub_queries = [q.strip() for q in query.split(",") if q.strip()]
             combined_summary = ""
             for i, sub_q in enumerate(sub_queries, 1):
-                print(f"  🔍 [patent_searcher] 서브 쿼리 {i}: {sub_q}")
                 summary, _ = run_filtered_rag(vectorstore, embedding_model, sub_q, llm=state.llm, use_bm25=True)
                 combined_summary += f"[서브 쿼리 {i}] {sub_q}\n{summary}\n\n"
             results[tool_name] = combined_summary.strip()
-
         elif tool_name == "patent_trend_analyzer":
-            trend_agent = KeywordAnalyzer(csv_path="C:/Users/user/OneDrive/문서/종설실습/streamlit/Codes/0527_cleaning_processing_ver1.csv", llm=state.llm)
-            interpretation = trend_agent.run(query)
+            agent = KeywordAnalyzer(csv_path="/Users/heejinyang/python/streamlit/Codes/0527_cleaning_processing_ver1.csv", llm=state.llm)
+            interpretation = agent.run(query)
             results[tool_name] = safe_result_summary(interpretation)
-
         elif tool_name == "patent_evaluator":
-            evaluator = Agent3(csv_path="C:/Users/user/OneDrive/문서/종설실습/streamlit/Codes/0527_cleaning_processing_ver1.csv", llm=state.llm)
-            interpretation = evaluator.handle(topic_query=query)
+            agent = Agent3(csv_path="/Users/heejinyang/python/streamlit/Codes/0527_cleaning_processing_ver1.csv", llm=state.llm)
+            interpretation = agent.handle(topic_query=query)
             results[tool_name] = interpretation
-
-        elif tool_name == "tech_writer":
-            result = generate_technical_draft.invoke({"user_input": query})
-            content = result.content if hasattr(result, "content") else str(result)
-            results[tool_name] = content
-
         else:
             results[tool_name] = f"[{tool_name}]에 대한 응답 (Mock 처리됨)"
-
-        print(f"✅ {tool_name} 실행 완료")
-
-    print("⚙️ 전체 도구 실행 결과 저장 완료")
     return {"results": results, "log": state.log + [f"⚙️ 실행 완료: {list(results.keys())}"]}
 
 def post_summary(state: PlanExecute):
-    print("\n🧠 [STEP 4] 결과 요약 시작")
     merged = "\n\n".join(f"[{tool} 결과]\n{res}" for tool, res in state.results.items())
-
     if not merged.strip():
-        print("⚠️ 결과 없음: post_summary 단계에서 요약할 내용이 없습니다.")
         return {"response": "❗ 도구 실행 결과가 비어 있습니다.", "log": state.log + ["⚠️ post_summary: 결과 없음"]}
-
     summary_prompt = PromptTemplate.from_template("""
-
 아래는 각 도구를 통해 수집된 결과입니다:
 
 {merged}
