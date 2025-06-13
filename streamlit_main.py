@@ -55,9 +55,18 @@ st.markdown("""
         margin-bottom: 8px;
     '>📑 특허 정보 분석 챗봇</h2>
     <div style='padding-left: 20px;'>
-        <p style='font-size: 14px; font-weight: 600; color:#334155;'>
-            뭔가 설명을 넣어야할듯
-        </p>
+      <p style='font-size: 14px; color:#334155;'>
+        📌 이 챗봇은 사용자의 기술 질의에 맞춰  
+        <strong>특허 검색</strong>, <strong>특허 동향 분석</strong>,  
+        <strong>중요 특허 분석</strong>, <strong>기술 설명서 초안 작성</strong>  
+        네 가지 주요 기능을 제공합니다.
+      </p>
+      <ul style='font-size: 13px; color:#475569; margin-top: 4px;'>
+        <li>🔍 <strong>특허 검색</strong> – 사용자의 기술적 질문에 맞는 특허를 검색하고 그 내용을 요약합니다.</li>
+        <li>📈 <strong>특허 동향 분석</strong> – 키워드·출원인별 출원 추이를 시각화하여 동향을 파악합니다.</li>
+        <li>📊 <strong>중요 특허 분석</strong> – 사용자가 선택한 평가 지표로 특허별 가중치를 계산해 순위를 매깁니다.</li>
+        <li>✍️ <strong>기술 설명서 초안 작성</strong> – 기술 개요를 바탕으로 기술 설명서 초안을 작성합니다.</li>
+      </ul>
     </div>
 """, unsafe_allow_html=True)
 
@@ -100,15 +109,33 @@ new_input = st.chat_input("분석할 기술 문장을 입력하세요...", key="
 if new_input:
     st.session_state.user_input = new_input
     st.session_state.messages.append({"role": "user", "content": new_input})
+
+    # ✅ 사용자 말풍선 바로 출력
+    st.markdown(f"""
+        <div style='display: flex; justify-content: flex-end; margin: 10px 0;'>
+            <div style='background-color: #f0f0f0; color: #000000;
+                        padding: 15px; border-radius: 10px;
+                        max-width: 33%; word-wrap: break-word;'>
+                <span style='font-size:14px;'>{new_input}</span>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # "초안"이 포함된 경우 바로 tech_writer 실행
     if "초안" in new_input:
         st.session_state.tools = ["tech_writer"]
-        st.session_state.log = ["초안 키워드 감지됨 → tech_writer 실행"]
-    else:
-        state = PlanExecute(input=new_input)
-        ts = tool_selector(state)
-        st.session_state.tools = ts["tools"]
-        st.session_state.log = ts["log"]
-        st.session_state.eval_ready = False
+        st.session_state.log = ["초안 키워드 감지됨 → tech_writer 직접 실행"]
+
+        generate_technical_draft(user_input=new_input)
+
+        st.stop()  # ✅ 실행 흐름 완전 종료 (아래 run_analysis로 안 떨어짐)
+
+    # ⬇️ 그 외에는 기존 분석 흐름 사용
+    state = PlanExecute(input=new_input)
+    ts = tool_selector(state)
+    st.session_state.tools = ts["tools"]
+    st.session_state.log = ts["log"]
+    st.session_state.eval_ready = False
 
 # 평가 UI 여부
 show_evaluation_ui = "patent_evaluator" in st.session_state.tools

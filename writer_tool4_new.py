@@ -43,59 +43,72 @@ class QwenModel:
 def generate_technical_draft(user_input: str) -> str:
     qwen = QwenModel()
 
-    # 최초 입력 또는 새 입력일 경우 상태 초기화
-    if "tool4_base_input" not in st.session_state or user_input != st.session_state.tool4_base_input:
-        st.session_state.tool4_base_input = user_input  # 최초 입력 고정
-        st.session_state.tool4_combined_input = user_input  # 누적 입력
+    # 1️⃣ 최초 상태 초기화
+    if "tool4_base_input" not in st.session_state:
+        st.session_state.tool4_base_input = ""
+        st.session_state.tool4_combined_input = ""
+        st.session_state.tool4_additional_inputs = []
+        st.session_state.tool4_retry = 0
         st.session_state.tool4_draft = ""
         st.session_state.tool4_missing = []
         st.session_state.tool4_done = False
-        st.session_state.tool4_retry = 0
 
-    # 초안이 없으면 생성
-    if not st.session_state.tool4_draft:
-        with st.spinner("초안 생성 중..."):
-            draft = qwen.generate_draft(st.session_state.tool4_combined_input)
-            missing = qwen.analyze_missing(draft)
+    # 2️⃣ 기본 기술 설명이 없으면 입력받기
+    if not st.session_state.tool4_base_input:
+        st.info("✏️ 기술 문장 초안을 작성하기 위해 먼저 기술 설명을 입력해 주세요.")
+        base = st.text_area("", key="tool4_initial_input", height=120, placeholder="🔧 기술에 대한 설명을 작성해 주세요.")
 
-            st.session_state.tool4_draft = draft
-            st.session_state.tool4_missing = missing
-            st.session_state.tool4_done = not missing
-
-    # 누락 항목 없이 완성된 경우
-    if st.session_state.tool4_done:
-        st.success("✅ 모든 항목이 포함된 최종 초안입니다.")
-        st.markdown(f"📄 **기술 설명서 초안**\n\n{st.session_state.tool4_draft}")
-        return
-
-    # 누락 항목이 있을 경우 보완 입력 받기
-    if st.session_state.tool4_missing:
-        st.warning(f"📌 누락된 항목: {', '.join(st.session_state.tool4_missing)}")
-
-        additional = st.text_area(
-            "🔧 누락 항목에 대한 보완 설명을 작성해주세요",
-            key=f"tool4_additional_input_{st.session_state.tool4_retry}",
-            height=100,
-            placeholder="예: 해당 기술은 고온 환경에서도 배터리 성능을 유지하도록 설계되었습니다..."
-        )
-
-        # 버튼 클릭 여부 상태 키
-        regen_key = f"tool4_regen_pressed_{st.session_state.tool4_retry}"
-
-        # 버튼이 처음 눌렸는지 상태 등록
-        if regen_key not in st.session_state:
-            st.session_state[regen_key] = False
-
-        # 버튼 눌림 처리
-        if st.button("🔄 보완 내용으로 초안 다시 생성", key=f"regen_button_{st.session_state.tool4_retry}"):
-            if additional.strip():
-                # 상태 업데이트
-                st.session_state.tool4_combined_input += " " + additional.strip()
-                st.session_state.tool4_draft = ""
-                st.session_state.tool4_missing = []
-                st.session_state.tool4_done = False
-                st.session_state.tool4_retry += 1
-                st.session_state[regen_key] = True  # ✅ rerun 트리거용 상태 저장
+        if st.button("🚀 초안 생성 시작"):
+            if base.strip():
+                st.session_state.tool4_base_input = base.strip()
+                st.session_state.tool4_combined_input = base.strip()
                 st.rerun()
             else:
                 st.warning("⚠️ 입력이 비어 있습니다.")
+        return
+
+    # 3️⃣ 기술 설명은 항상 위에 표시
+    st.markdown("#### 📌 기술 설명 (기본 입력)")
+    st.info(st.session_state.tool4_base_input)
+
+    # 4️⃣ 이전 보완 입력 표시
+    if st.session_state.tool4_additional_inputs:
+        st.markdown("#### ✍️ 추가 입력된 기술 설명")
+        st.info("\n\n".join(st.session_state.tool4_additional_inputs))
+
+    # 5️⃣ 초안이 없으면 생성
+    if not st.session_state.tool4_draft:
+        draft = qwen.generate_draft(st.session_state.tool4_combined_input)
+        missing = qwen.analyze_missing(draft)
+
+        st.session_state.tool4_draft = draft
+        st.session_state.tool4_missing = missing
+        st.session_state.tool4_done = not missing
+
+    # 6️⃣ 초안 완성 시 종료
+    if st.session_state.tool4_done:
+        st.markdown("### 📄 기술 설명서 초안")
+        st.success("✅ 모든 항목이 포함된 최종 초안입니다.")
+        st.text(st.session_state.tool4_draft)
+        return
+
+    # 7️⃣ 누락 항목 보완 입력
+    st.warning(f"📌 누락된 항목: {', '.join(st.session_state.tool4_missing)}")
+
+    additional = st.text_area(
+        "🔧 누락 항목에 대한 보완 설명을 작성해주세요",
+        key=f"tool4_additional_input_{st.session_state.tool4_retry}",
+        height=100
+    )
+
+    if st.button("🔄 보완 내용으로 초안 다시 생성"):
+        if additional.strip():
+            st.session_state.tool4_additional_inputs.append(additional.strip())
+            st.session_state.tool4_combined_input += " " + additional.strip()
+            st.session_state.tool4_draft = ""
+            st.session_state.tool4_missing = []
+            st.session_state.tool4_done = False
+            st.session_state.tool4_retry += 1
+            st.rerun()
+        else:
+            st.warning("⚠️ 입력이 비어 있습니다.")
