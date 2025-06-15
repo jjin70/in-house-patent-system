@@ -3,6 +3,7 @@ from collections import defaultdict
 from typing import List, Tuple, Dict
 import json
 import re
+import streamlit as st
 from difflib import SequenceMatcher
 from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
@@ -10,6 +11,7 @@ from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_community.retrievers import BM25Retriever
+
 
 def normalize(scores):
     min_s, max_s = min(scores), max(scores)
@@ -448,7 +450,7 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
         # print("📭 최종적으로 적합한 특허 없음")
         # print("질문과 관련된 특허를 찾을 수 없습니다.")
         advanced_summary = "해당 기술과 관련한 특허를 찾기 어려움"
-        structured_info_df = ""
+        structured_info_df = pd.DataFrame()
         return advanced_summary, structured_info_df
 
     # print(f"📚 Selector 통과 후 문서 개수: {len(selected_docs)}개")
@@ -462,7 +464,7 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
     full_summary = summary_header + advanced_summary
 
     # Selector 이후 출원번호 추출
-    selected_appnums = list({doc.metadata.get("출원번호") for doc in selected_docs})
+    selected_app_nums = list({doc.metadata.get("출원번호") for doc in selected_docs})
 
     # Selector 통과 못한 출원번호 추출
     excluded_app_nums = list({
@@ -493,6 +495,9 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
 
     # Selector 통과 못한 문서 요약 제공용 DF 생성
 
+    st.markdown("## 📘 특허 검색 및 요약 정보")
+    st.markdown(full_summary)
+
     excluded_summary_records = []
     for doc in retrieved_excluded_summaries:
         raw_summary = doc.page_content.strip()
@@ -510,9 +515,8 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
     excluded_summary_df = pd.DataFrame(excluded_summary_records)
 
     if not excluded_summary_df.empty:
-        excluded_summary_text = "\n\n📄 Selector에서 제외된 특허 요약 정보:\n\n"
-        excluded_summary_text += excluded_summary_df[["출원번호", "발명의 명칭", "요약"]].to_markdown(index=False)
-    else:
-        excluded_summary_text = ""
-
-    return full_summary + "\n\n" + excluded_summary_text, excluded_summary_df
+        st.markdown("## 📄 관련 특허 요약 정보")
+        st.dataframe(
+            excluded_summary_df[["출원번호", "발명의 명칭", "출원인", "요약"]]
+        )
+    return None
