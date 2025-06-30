@@ -80,7 +80,7 @@ class Agent3:
         interpretation = self.qwen.ask(prompt)
 
         # ✅ Streamlit 출력 (선택 사항)
-        st.markdown("### 📊 중요 특허 평가 결과")
+        st.markdown("## 📊 중요 특허 평가 결과")
         st.markdown(top_10.to_markdown(index=False))
         st.markdown("### 🧠 시사점 요약")
         st.markdown(interpretation)

@@ -203,7 +203,7 @@ if st.session_state.user_input and run_analysis:
 
             # 결과 출력
             if len(st.session_state.tools) > 1:
-                st.markdown("### 💡 종합 결과")
+                st.markdown("## 💡 종합 결과")
                 st.markdown(final["response"])
             #
             # 로그

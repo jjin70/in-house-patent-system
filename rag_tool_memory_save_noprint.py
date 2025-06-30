@@ -515,7 +515,7 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
     excluded_summary_df = pd.DataFrame(excluded_summary_records)
 
     if not excluded_summary_df.empty:
-        st.markdown("## 📄 관련 특허 요약 정보")
+        st.markdown("### 📄 관련 특허 요약 정보")
         st.dataframe(
             excluded_summary_df[["출원번호", "발명의 명칭", "출원인", "요약"]]
         )
