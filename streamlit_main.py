@@ -4,6 +4,7 @@ import os
 
 sys.path.append(os.path.join(os.getcwd(), "Codes"))
 from final_agent import app, tool_selector, PlanExecute
+from writer_tool4_new import generate_technical_draft
 
 st.set_page_config(page_title="📑 특허 정보 분석 챗봇", layout="wide")
 
@@ -170,6 +171,11 @@ else:
 
 # 🔧 분석 조건 만족 시 실행
 if st.session_state.user_input and run_analysis:
+
+    if st.session_state.tools == ["tech_writer"]:
+        generate_technical_draft(st.session_state.user_input)
+        st.stop()
+
     with st.spinner("LLM 분석 중…"):
         try:
             # 가중치 계산

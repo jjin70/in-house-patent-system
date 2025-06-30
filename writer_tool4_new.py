@@ -78,8 +78,9 @@ def generate_technical_draft(user_input: str) -> str:
 
     # 5️⃣ 초안이 없으면 생성
     if not st.session_state.tool4_draft:
-        draft = qwen.generate_draft(st.session_state.tool4_combined_input)
-        missing = qwen.analyze_missing(draft)
+        with st.spinner("LLM 분석 중…"):
+            draft = qwen.generate_draft(st.session_state.tool4_combined_input)
+            missing = qwen.analyze_missing(draft)
 
         st.session_state.tool4_draft = draft
         st.session_state.tool4_missing = missing

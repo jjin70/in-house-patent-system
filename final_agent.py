@@ -202,10 +202,9 @@ def execute_tools(state: PlanExecute):
             results[tool_name] = interpretation
 
         elif tool_name == "tech_writer":
-            result = generate_technical_draft.invoke({"user_input": query})
-            content = result.content if hasattr(result, "content") else str(result)
-            results[tool_name] = content
-
+            result = generate_technical_draft(query) 
+            results[tool_name] = result or ""  
+            
         else:
             results[tool_name] = f"[{tool_name}]에 대한 응답 (Mock 처리됨)"
 

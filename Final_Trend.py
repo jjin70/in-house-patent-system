@@ -70,7 +70,7 @@ class KeywordAnalyzer:
             st.warning(f"❌ 주어진 연도 범위 내에 '{keyword}' 관련 특허가 없습니다.")
             return
 
-        # ✅ Streamlit 그래프 출력ㅌ
+        # ✅ Streamlit 그래프 출력
         fig, ax = plt.subplots(figsize=(4, 2.5))
         ax.bar(summary["출원연도"], summary["출원 건수"], color="navy")
         ax.set_xlabel("출원연도", fontsize=4)
