@@ -519,4 +519,4 @@ ex) 현대자동차, 현대모비스, 엘지이노텍, 삼성에스디아이, �
         st.dataframe(
             excluded_summary_df[["출원번호", "발명의 명칭", "출원인", "요약"]]
         )
-    return None
+    return advanced_summary, excluded_summary_df

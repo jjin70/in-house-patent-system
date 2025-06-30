@@ -172,14 +172,23 @@ else:
 if st.session_state.user_input and run_analysis:
     with st.spinner("LLM 분석 중…"):
         try:
-            # PlanExecute 상태 업데이트
+            # 가중치 계산
+            weights_dict = None
+            if manual_weights:
+                total = sum(w for _, w in manual_weights)
+                if total > 0:
+                    weights_dict = {k: w / total for k, w in manual_weights}
+
+            # 실행 상태 구성
             state = PlanExecute(
                 input=st.session_state.user_input,
                 tools=st.session_state.tools,
-                sub_queries={},  # 자동 생성됨
+                sub_queries={},
                 results={},
                 log=st.session_state.log,
-                response=None
+                response=None,
+                selected_indicators=selected_indicators,
+                indicator_weights=weights_dict
             )
             # 평가 지표 정보가 필요한 경우, PlanExecute 모델에 필드를 추가 후 여기에 설정하세요.
 
@@ -193,8 +202,8 @@ if st.session_state.user_input and run_analysis:
             )
 
             # 결과 출력
-            # st.markdown("### 💡 종합 결과")
-            # st.markdown(final["response"])
+            st.markdown("### 💡 종합 결과")
+            st.markdown(final["response"])
             #
             # 로그
             # with st.expander("📜 실행 로그"):

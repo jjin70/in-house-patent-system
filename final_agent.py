@@ -13,6 +13,7 @@ from rag_tool_memory_save_noprint import run_filtered_rag
 from Final_Trend import KeywordAnalyzer
 from Final_evaluator import Agent3
 from writer_tool4_new import generate_technical_draft
+from typing import Optional
 
 llm = ChatOllama(model="qwen2.5:7b", temperature=0.0)
 
@@ -37,7 +38,7 @@ def extract_json_from_text(text: str) -> str:
 
 embedding_model = OllamaEmbeddings(model="bge-m3")
 vectorstore = Chroma(
-    persist_directory="/Users/heejinyang/python/streamlit/Evaluator_DB",
+    persist_directory="/Users/heejinyang/python/streamlit/chroma_db_streamlit",
     embedding_function=embedding_model,
 )
 
@@ -50,7 +51,8 @@ class PlanExecute(BaseModel):
     response: Union[str, None] = None
     log: List[str] = []
     llm: ChatOllama = llm  # 전역 공유 LLM
-
+    selected_indicators: Optional[List[str]] = None
+    indicator_weights: Optional[Dict[str, float]] = None
 
 tool_selector_prompt = ChatPromptTemplate.from_template("""
 다음 사용자의 질문을 해결하기 위해 어떤 도구를 사용하는 것이 가장 적절한지 판단하세요.
@@ -167,21 +169,12 @@ def execute_tools(state: PlanExecute):
         print(f"▶ 질의 내용: {query}")
 
         if tool_name == "patent_searcher":
-            sub_queries = [q.strip() for q in query.split(",") if q.strip()]
+            sub_queries = [q.strip() for q in query.split(",") if q.strip()]  # 쉼표 기준 분리
             combined_summary = ""
             for i, sub_q in enumerate(sub_queries, 1):
-                print(f"  🔍 [patent_searcher] 서브 쿼리 {i}: {sub_q}")
-                rag_result = run_filtered_rag(
-                    vectorstore, embedding_model, sub_q,
-                    llm=state.llm, use_bm25=True
-                )
-                if rag_result is None or not isinstance(rag_result, tuple):
-                    # 에러 로그 남기고 기본 메시지로 대체
-                    print(f"⚠️ run_filtered_rag가 올바른 결과를 반환하지 않았습니다: {rag_result!r}")
-                    summary = "요약을 생성할 수 없습니다."
-                else:
-                    summary, _ = rag_result
-                    combined_summary += f"[서브 쿼리 {i}] {sub_q}\n{summary}\n\n"
+                # print(f"\n🔍 [Tool1-{i}] 서브 쿼리 실행 중: {sub_q}")
+                summary= run_filtered_rag(vectorstore, embedding_model, sub_q, llm=state.llm, use_bm25=True)
+                combined_summary += f"[서브 쿼리 {i}] {sub_q}\n{summary}\n\n"
             results[tool_name] = combined_summary.strip()
 
         elif tool_name == "patent_trend_analyzer":
@@ -194,8 +187,18 @@ def execute_tools(state: PlanExecute):
         elif tool_name == "patent_evaluator":
             evaluator = Agent3(
                 csv_path="/Users/heejinyang/python/streamlit/Codes/Filtered_final.csv",
-                llm=state.llm)
-            interpretation = evaluator.handle(topic_query=query)
+                llm=state.llm,
+                vectorstore_dir="/Users/heejinyang/python/streamlit/Evaluator_DB"
+
+            )
+            interpretation = evaluator.handle(
+                topic_query=query,
+                selected_indicators=state.selected_indicators,
+                weight_mode="manual" if state.indicator_weights else "auto",
+                manual_weights=[
+                    state.indicator_weights[k] for k in state.selected_indicators
+                ] if state.indicator_weights else None
+            )
             results[tool_name] = interpretation
 
         elif tool_name == "tech_writer":
@@ -214,21 +217,34 @@ def execute_tools(state: PlanExecute):
 
 def post_summary(state: PlanExecute):
     print("\n🧠 [STEP 4] 결과 요약 시작")
-    merged = "\n\n".join(f"[{tool} 결과]\n{res}" for tool, res in state.results.items())
 
-    if not merged.strip():
-        print("⚠️ 결과 없음: post_summary 단계에서 요약할 내용이 없습니다.")
-        return {"response": "❗ 도구 실행 결과가 비어 있습니다.", "log": state.log + ["⚠️ post_summary: 결과 없음"]}
+    # 도구별 요약 로직을 다르게 적용
+    shortened = {}
+    for tool, res in state.results.items():
+        if tool == "patent_searcher":
+            # 서브 쿼리별로 나뉜 경우가 있으므로 잘라내지 않음
+            shortened[tool] = res if len(res) <= 3000 else res[:3000] + "\n\n[...이하 생략...]"
+        elif tool == "patent_evaluator":
+            if isinstance(res, pd.DataFrame):
+                top3 = res.sort_values("종합점수", ascending=False).head(3)
+                shortened[tool] = top3.to_markdown(index=False)
+            else:
+                shortened[tool] = str(res)[:1500]
+        else:
+            shortened[tool] = safe_result_summary(res)
+
+    # 도구별 요약 결과를 병합
+    merged = "\n\n".join(f"[{tool} 결과]\n{summary}" for tool, summary in shortened.items())
+    print("==========tool종합\n" + merged)
 
     summary_prompt = PromptTemplate.from_template("""
+    다음은 특허 분석 시스템의 각 도구를 통해 수집된 결과입니다:
 
-아래는 각 도구를 통해 수집된 결과입니다:
-
-{merged}
+    {merged}
 
 이 정보를 바탕으로 사용자의 질문에 대한 종합적인 답변을 자연스럽게 작성하세요.
 이때, 각 Tool에 따라 어떤 정보가 파악되었는지, 이를 통해 어떤 종합적 시사점을 얻을 수 있는지의 형식으로 출력할 수 있습니다.
-- 이때, **반드시** 한국어로만 결과를 출력하세요.
+**반드시** 한국어로만 결과를 출력하세요.
 """)
     summary_chain = summary_prompt | state.llm
     result = summary_chain.invoke({"merged": merged})
